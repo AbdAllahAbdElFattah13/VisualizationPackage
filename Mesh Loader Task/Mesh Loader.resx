@@ -118,15 +118,19 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="InstructionsLabel.Text" xml:space="preserve">
-    <value>Movement Instructions:
-- Move Up: Press "W". 
-- Move Down: Press "S".
-- Move Right: Press "D".
-- Move Left: Press "A".
-- Zoom In: Press "X".  
-- Zoom Out: Press "Z".
-- Rotate on Z-Axis: Press "R". 
-- Rotate on X-Axis: Press "T".
-- Rotate on Y-Axis: Press "Y".</value>
+    <value>Move:
+- Up: Press "W". 
+- Down: Press "S".
+- Right: Press "D".
+- Left: Press "A".
+
+Zoom:
+- In: Press "X".  
+- Out: Press "Z".
+
+Rotate:
+- On Z-Axis: Press "R". 
+- On X-Axis: Press "T".
+- On Y-Axis: Press "Y".</value>
   </data>
 </root>

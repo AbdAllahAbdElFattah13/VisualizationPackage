@@ -16,7 +16,7 @@ namespace Mesh_Loader_Task
 {
     public partial class MeshLoaderForm : Form
     {
-        Mesh MeshMesh;
+        Mesh m;
         double X, Y;
         bool ToggleDisplayValues = false;
 
@@ -25,16 +25,98 @@ namespace Mesh_Loader_Task
         List<ValueAndPosition> FaceValues;
         List<Color> FaceColors;
 
+        #region Data-Depended fileds
+        uint dataIndex;
+        double MaxData, MinData;
+        #endregion
+
+        #region Contour fileds
+        bool toggleDisplayContours = true;
+        List<Contour> contours;
+        #endregion
+
+        #region Contour methods
+        private void HandleCounterWithNumberEvent(int numberOfContours)
+        {
+            this.contours = VisualizationOperations.CalculateContours(m, numberOfContours, dataIndex, MinData, MaxData);
+        }
+
+        private void HandleCounterOverIntervalEvent(double start, double end, double step)
+        {
+            this.contours = VisualizationOperations.CalculateContours(m, dataIndex, MinData, MaxData, step);
+        }
+        
+        private void HandleContourEvents()
+        {
+            if (!CheckData()) return;
+            if (ContoursWithNumberRadioButton.Checked)
+            {
+                int numberOfCounters = -1;
+                if (int.TryParse(this.ContoursGroupBox.Controls["ContoursWithNumberGroupBox"]
+                    .Controls["NumberOfContoursTxtBox"].Text,
+                    out numberOfCounters) && numberOfCounters > 0)
+                {
+                    this.HandleCounterWithNumberEvent(numberOfCounters);
+                }
+                else
+                {
+                    MessageBox.Show("Enter vaild +ve integer");
+                }
+            }
+            else if (ContoursOverIntervalRadioButton.Checked)
+            {
+                //start, end, step
+                double[] temp = new double[3];
+                GroupBox gb = (GroupBox)this.ContoursGroupBox.Controls["ContoursOverIntervalGroupBox"];
+                if (double.TryParse(gb.Controls["ContourIntervalStartTxtBox"].Text, out temp[0]) &&
+                    double.TryParse(gb.Controls["ContourIntervalEndTxtBox"].Text, out temp[1]) &&
+                    double.TryParse(gb.Controls["ContourIntervalStepTxtBox"].Text, out temp[2]))
+                {
+                    if (temp[1] > temp[0]) if (temp[2] < 0) temp[2] *= -1;
+                    if (temp[1] < temp[0]) if (temp[2] > 0) temp[2] *= -1;
+                    if (temp[1] == temp[0]) temp[2] = 0;
+
+                    this.HandleCounterOverIntervalEvent(temp[0], temp[1], temp[2]);
+                }
+                else
+                    MessageBox.Show("make sure the number is vaild!");
+            }
+        }
+
+        private void clearConotuerData()
+        {
+            ContoursWithNumberRadioButton.Checked = false;
+            ContoursOverIntervalRadioButton.Checked = false;
+            this.NumberOfContoursTxtBox.Text = "";
+            this.ContourIntervalStartTxtBox.Text = "";
+            this.ContourIntervalEndTxtBox.Text = "";
+            this.ContourIntervalStepTxtBox.Text = "";
+            this.ContoursGroupBox.Controls["ContoursWithNumberGroupBox"].Hide();
+            this.ContoursGroupBox.Controls["ContoursOverIntervalGroupBox"].Hide();
+            contours = new List<Contour>();        
+        }
+
+        private void HandleContourEnterKey(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                this.HandleContourEvents();
+            }
+        }
+        #endregion
 
         public MeshLoaderForm()
         {
             InitializeComponent();
+            this.ContoursGroupBox.Controls["ContoursWithNumberGroupBox"].Hide();
+            this.ContoursGroupBox.Controls["ContoursOverIntervalGroupBox"].Hide();
+
             InitializeGraphics();
             EdgeValues = new List<ValueAndPosition>();
             EdgeColors = new List<Color>();
             FaceValues = new List<ValueAndPosition>();
             FaceColors = new List<Color>();
-            //this.DataComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            contours = new List<Contour>();
         }
 
         void InitializeGraphics()
@@ -64,6 +146,9 @@ namespace Mesh_Loader_Task
             DataComboBox.Items.Clear();
 
             ToggleDisplayValues = false;
+
+            clearConotuerData();
+            toggleDisplayContours = true;
         }
 
         private void LoadFileButton_Click(object sender, EventArgs e)
@@ -77,20 +162,20 @@ namespace Mesh_Loader_Task
                     Reset();
 
                     //FilePathText.Text = FD.FileName;
-                    MeshMesh = new Mesh(FD.FileName, 1);
+                    m = new Mesh(FD.FileName, 1);
 
-                    if (MeshMesh != null)
+                    if (m != null)
                     {
                         //Load Data in Combobox;
-                        foreach (string Name in MeshMesh.VarToIndex.Keys)
+                        foreach (string Name in m.VarToIndex.Keys)
                             DataComboBox.Items.Add(Name);
 
-                        MessageBox.Show("File Loaded Successfully.\n\nMesh Title: " + MeshMesh.Title);
-                        Gl.glLoadMatrixd(MeshMesh.Transformation.Data); //Load in center.
+                        MessageBox.Show("File Loaded Successfully.\n\nMesh Title: " + m.Title);
+                        Gl.glLoadMatrixd(m.Transformation.Data); //Load in center.
 
                         double Min, Max;
-                        MeshMesh.GetMinMaxValues(0, out  Min, out Max);
-                        VisualizationOperations.CalculateColorsValues(MeshMesh, 0, Min, Max, EdgeValues, EdgeColors, FaceValues, FaceColors);
+                        m.GetMinMaxValues(0, out  Min, out Max);
+                        VisualizationOperations.CalculateColorsValues(m, 0, Min, Max, EdgeValues, EdgeColors, FaceValues, FaceColors);
                         
 
                         SimpleOpenGlControl.Invalidate();  //Update and redraw.
@@ -172,13 +257,13 @@ namespace Mesh_Loader_Task
 
         private void SimpleOpenGlControl_Paint(object sender, PaintEventArgs e)
         {
-            if (MeshMesh == null)  //If the file is not loaded and the mesh = null, don't draw.
+            if (m == null)  //If the file is not loaded and the mesh = null, don't draw.
                 return;
 
             DrawMesh();
         }
 
-        void DrawMesh()
+        private void DrawMesh()
         {
             int IndexOfEdgeColors = 0, IndexOfFaceColors = -1;
             float X_Min = float.MaxValue, X_Max = float.MinValue, Y_Min = float.MaxValue, Y_Max = float.MinValue;
@@ -186,7 +271,7 @@ namespace Mesh_Loader_Task
             Gl.glClearColor(0, 0, 0, 0);
             Gl.glClear(Gl.GL_COLOR_BUFFER_BIT | Gl.GL_DEPTH_BUFFER_BIT);
 
-            foreach (Zone Z in MeshMesh.Zones)
+            foreach (Zone Z in m.Zones)
             {
                 foreach (Face F in Z.Faces)
                 {
@@ -227,11 +312,12 @@ namespace Mesh_Loader_Task
                         Y_Min = Math.Min((float)Z.Vertices[E.End].Position.y, Y_Min);
                         Y_Max = Math.Max((float)Z.Vertices[E.End].Position.y, Y_Max);
 
-                    }
+                    }//end of edges
                     Gl.glEnd();
                     Gl.glFlush();
-                }
-            }
+                }//end of faces
+            }// end of zones
+
             //Get the midpoint.
             X = (X_Max + X_Min) / 2;
             Y = (Y_Max + Y_Min) / 2;
@@ -242,6 +328,33 @@ namespace Mesh_Loader_Task
                     DisplayValues(EdgeValues, Color.PeachPuff);
                 else if (FaceColoringBox.Checked)
                     DisplayValues(FaceValues, Color.White);
+            }
+
+
+
+            int xProblemsMin1st = 0, xProblemsMin2nd = 0;
+                foreach(var c in this.contours)
+                {
+                    foreach(var t in c.edges)
+                    {
+                        //if (t.Item1.x > X_Max || t.Item2.x > X_Max)
+                        //{
+                        //    ++xProblemsMax;
+                        //    //MessageBox.Show("problem here!, x less than minX, or bigger than maxX");
+                        //}
+                        if (t.Item1.x < X_Min) ++xProblemsMin1st;
+                        if (t.Item2.x < X_Min) ++xProblemsMin2nd;
+                    }
+                }
+
+                //MessageBox.Show("xProblemsMin1st: " + xProblemsMin1st.ToString() + ", and xProblemsMin2nd: " + xProblemsMin2nd.ToString());
+
+            if (toggleDisplayContours)
+            {
+                foreach (var c in contours)
+                {
+                    c.Draw();
+                }
             }
         }
 
@@ -261,48 +374,120 @@ namespace Mesh_Loader_Task
         {
             if (EdgeColoringBox.Checked == false || CheckData() == false)
                 return;
-            SimpleOpenGlControl.Invalidate();
+            SimpleOpenGlControl.Refresh();
+
         }
 
         private void FaceColoringBox_CheckedChanged(object sender, EventArgs e)
         {
             if (FaceColoringBox.Checked == false || CheckData() == false)
                 return;
-            SimpleOpenGlControl.Invalidate();
+            //SimpleOpenGlControl.Invalidate();
+            SimpleOpenGlControl.Refresh();
+
         }
 
         private void DataComboBox_SelectedIndexChanged(object sender, EventArgs e)
         {
             string Data = DataComboBox.SelectedItem.ToString();
-            uint Index = (uint)MeshMesh.VarToIndex[Data];
-            double Max, Min;
+            dataIndex = (uint)m.VarToIndex[Data];
+            m.GetMinMaxValues(dataIndex, out  MinData, out MaxData);
+            
+            MaxValueLabel.Text = MaxData.ToString();
+            MinValueLabel.Text = MinData.ToString();
 
-            MeshMesh.GetMinMaxValues(Index, out  Min, out Max);
-            MaxValueLabel.Text = Max.ToString();
-            MinValueLabel.Text = Min.ToString();
+            VisualizationOperations.CalculateColorsValues(m, dataIndex, MinData, MaxData, EdgeValues, EdgeColors, FaceValues, FaceColors);
+            //SimpleOpenGlControl.Invalidate();
+            SimpleOpenGlControl.Refresh();
 
-            VisualizationOperations.CalculateColorsValues(MeshMesh, Index, Min, Max, EdgeValues, EdgeColors, FaceValues, FaceColors);
-            SimpleOpenGlControl.Invalidate();
         }
 
         private void DisplayValuesButton_Click(object sender, EventArgs e)
         {
             ToggleDisplayValues = !ToggleDisplayValues;
-            this.Refresh();
+            //this.SimpleOpenGlControl.Invalidate();
+            SimpleOpenGlControl.Refresh();
+
         }
 
-        private void DisplayValues(List<ValueAndPosition> list, Color TextColor)
+        private void DisplayValues(List<ValueAndPosition> values, Color TextColor)
         {
             Gl.glColor3d(TextColor.R / 255.0, TextColor.G / 255.0, TextColor.B / 255.0);
 
-            for (int i = 0; i < list.Count(); ++i)
+            for (int i = 0; i < values.Count(); ++i)
             {
-                Gl.glRasterPos2f((float)list[i].point.x, (float)list[i].point.y);
-                foreach (char c in Math.Round(list[i].value, 3).ToString())
+                Gl.glRasterPos2f((float)values[i].point.x, (float)values[i].point.y);
+                foreach (char c in Math.Round(values[i].value, 3).ToString())
                 {
                     Glut.glutBitmapCharacter(Glut.GLUT_BITMAP_HELVETICA_10, c);
                 }
             }
+        }
+
+        private void ContoursToggleDisplayBtn_Click(object sender, EventArgs e)
+        {
+            toggleDisplayContours = !toggleDisplayContours;
+            this.HandleContourEvents();
+            //this.SimpleOpenGlControl.Invalidate();
+            SimpleOpenGlControl.Refresh();
+        }
+
+        private void CalculateContoursWithNumberBtn_Click(object sender, EventArgs e)
+        {
+            this.HandleContourEvents();
+            this.toggleDisplayContours = true;
+            //this.SimpleOpenGlControl.Invalidate();
+            SimpleOpenGlControl.Refresh();
+        }
+
+        private void ContoursWithNumberRadioButton_CheckedChanged(object sender, EventArgs e)
+        {
+            if (!CheckData())
+            {
+                ContoursWithNumberRadioButton.Checked = false;
+                ContoursOverIntervalRadioButton.Checked = false;
+                return;
+            } 
+            if (ContoursWithNumberRadioButton.Checked)
+            {
+                this.ContoursGroupBox.Controls["ContoursWithNumberGroupBox"].Show();
+                this.ContoursGroupBox.Controls["ContoursOverIntervalGroupBox"].Hide();
+            }
+            else if (ContoursOverIntervalRadioButton.Checked)
+            {
+                this.ContoursGroupBox.Controls["ContoursOverIntervalGroupBox"].Show();
+                this.ContoursGroupBox.Controls["ContoursWithNumberGroupBox"].Hide();
+            }
+        }
+
+        private void ClearContours_Click(object sender, EventArgs e)
+        {
+            clearConotuerData();
+            this.SimpleOpenGlControl.Refresh();
+        }
+
+        private void ClearMeshBtn_Click(object sender, EventArgs e)
+        {
+            EdgeColoringBox.Checked = false;
+            FaceColoringBox.Checked = false;
+            //this.SimpleOpenGlControl.Invalidate();
+            SimpleOpenGlControl.Refresh();
+        }
+
+        private void ContoursToggleDisplayOverIntervalBtn_Click(object sender, EventArgs e)
+        {
+            toggleDisplayContours = !toggleDisplayContours;
+            this.HandleContourEvents();
+            //this.SimpleOpenGlControl.Invalidate();
+            SimpleOpenGlControl.Refresh();
+        }
+
+        private void CalculateContoursOverIntervalBtn_Click(object sender, EventArgs e)
+        {
+            this.HandleContourEvents();
+            this.toggleDisplayContours = true;
+            //this.SimpleOpenGlControl.Invalidate();
+            SimpleOpenGlControl.Refresh();
         }
     }
 }
