@@ -133,7 +133,8 @@ namespace Mesh_Loader_Task
             //Glu.gluPerspective(90.0f, (double)SimpleOpenGlControl.Height / (double)SimpleOpenGlControl.Width, 0.01f, 5000.0f);
             //Glu.gluPerspective(60, this.Width / this.Height, 0, 100);
         }
-
+        
+        #region helpers
         private void Reset()
         {
             Gl.glPopMatrix();
@@ -149,46 +150,117 @@ namespace Mesh_Loader_Task
 
             clearConotuerData();
             toggleDisplayContours = true;
+
+            MaxValueLabel.Text = "";
+            MinValueLabel.Text = "";
         }
 
-        private void LoadFileButton_Click(object sender, EventArgs e)
+        private void DrawMesh()
         {
-            OpenFileDialog FD = new OpenFileDialog();  //Display a dialog box that allow the user to open a file.
+            int IndexOfEdgeColors = 0, IndexOfFaceColors = -1;
+            float X_Min = float.MaxValue, X_Max = float.MinValue, Y_Min = float.MaxValue, Y_Max = float.MinValue;
 
-            if (FD.ShowDialog() == DialogResult.OK)
+            Gl.glClearColor(0, 0, 0, 0);
+            Gl.glClear(Gl.GL_COLOR_BUFFER_BIT | Gl.GL_DEPTH_BUFFER_BIT);
+
+            foreach (Zone Z in m.Zones)
             {
-                try
+                foreach (Face F in Z.Faces)
                 {
-                    Reset();
+                    if (FaceColoringBox.Checked)
+                        Gl.glBegin(Gl.GL_POLYGON);
+                    else
+                        Gl.glBegin(Gl.GL_LINES);
 
-                    //FilePathText.Text = FD.FileName;
-                    m = new Mesh(FD.FileName, 1);
-
-                    if (m != null)
+                    IndexOfFaceColors++;
+                    foreach (uint EN in F.Edges)
                     {
-                        //Load Data in Combobox;
-                        foreach (string Name in m.VarToIndex.Keys)
-                            DataComboBox.Items.Add(Name);
+                        Edge E = Z.Edges[EN];
 
-                        MessageBox.Show("File Loaded Successfully.\n\nMesh Title: " + m.Title);
-                        Gl.glLoadMatrixd(m.Transformation.Data); //Load in center.
+                        if (EdgeColoringBox.Checked)
+                        {
+                            Color EdgeColor = EdgeColors[IndexOfEdgeColors];
+                            Gl.glColor3d(EdgeColor.R / 255.0, EdgeColor.G / 255.0, EdgeColor.B / 255.0);
+                            IndexOfEdgeColors++;
+                        }
+                        else if (FaceColoringBox.Checked)
+                        {
+                            Color FaceColor = FaceColors[IndexOfFaceColors];
+                            Gl.glColor3d(FaceColor.R / 255.0, FaceColor.G / 255.0, FaceColor.B / 255.0);
+                        }
+                        else
+                            Gl.glColor3d(1, 1, 1);
 
-                        double Min, Max;
-                        m.GetMinMaxValues(0, out  Min, out Max);
-                        VisualizationOperations.CalculateColorsValues(m, 0, Min, Max, EdgeValues, EdgeColors, FaceValues, FaceColors);
-                        
+                        Z.Vertices[E.Start].Position.glTell();
+                        Z.Vertices[E.End].Position.glTell();
 
-                        SimpleOpenGlControl.Invalidate();  //Update and redraw.
-                    }
-                }
-                catch (Exception E)
+                        //Get Minimum X, Minimum Y, Maximum X and Maximum Y.
+                        X_Min = Math.Min((float)Z.Vertices[E.Start].Position.x, X_Min);
+                        X_Max = Math.Max((float)Z.Vertices[E.Start].Position.x, X_Max);
+                        Y_Min = Math.Min((float)Z.Vertices[E.Start].Position.y, Y_Min);
+                        Y_Max = Math.Max((float)Z.Vertices[E.Start].Position.y, Y_Max);
+                        X_Min = Math.Min((float)Z.Vertices[E.End].Position.x, X_Min);
+                        X_Max = Math.Max((float)Z.Vertices[E.End].Position.x, X_Max);
+                        Y_Min = Math.Min((float)Z.Vertices[E.End].Position.y, Y_Min);
+                        Y_Max = Math.Max((float)Z.Vertices[E.End].Position.y, Y_Max);
+
+                    }//end of edges
+                    Gl.glEnd();
+                    Gl.glFlush();
+                }//end of faces
+            }// end of zones
+
+            //Get the midpoint.
+            X = (X_Max + X_Min) / 2;
+            Y = (Y_Max + Y_Min) / 2;
+
+            if (ToggleDisplayValues)
+            {
+                if (EdgeColoringBox.Checked)
+                    DisplayValues(EdgeValues, Color.PeachPuff);
+                else if (FaceColoringBox.Checked)
+                    DisplayValues(FaceValues, Color.White);
+            }
+
+            //MessageBox.Show("xProblemsMin1st: " + xProblemsMin1st.ToString() + ", and xProblemsMin2nd: " + xProblemsMin2nd.ToString());
+            if (toggleDisplayContours)
+            {
+                foreach (var c in contours)
                 {
-                    MessageBox.Show("Failed to Load File.\n" + E.Message);
-                    return;
+                    c.Draw();
                 }
             }
         }
 
+        private bool CheckData()
+        {
+            if (DataComboBox.Text == "")
+            {
+                EdgeColoringBox.Checked = false;
+                FaceColoringBox.Checked = false;
+                MessageBox.Show("Please select data first.");
+                return false;
+            }
+            return true;
+        }
+
+        private void DisplayValues(List<ValueAndPosition> values, Color TextColor)
+        {
+            Gl.glColor3d(TextColor.R / 255.0, TextColor.G / 255.0, TextColor.B / 255.0);
+
+            for (int i = 0; i < values.Count(); ++i)
+            {
+                Gl.glRasterPos2f((float)values[i].point.x, (float)values[i].point.y);
+                foreach (char c in Math.Round(values[i].value, 3).ToString())
+                {
+                    Glut.glutBitmapCharacter(Glut.GLUT_BITMAP_HELVETICA_10, c);
+                }
+            }
+        }
+
+        #endregion
+
+        #region SimpleOpenGlControl event handlers
         private void SimpleOpenGlControl_Load(object sender, EventArgs e)
         {
             KeyPreview = true;
@@ -262,114 +334,9 @@ namespace Mesh_Loader_Task
 
             DrawMesh();
         }
-
-        private void DrawMesh()
-        {
-            int IndexOfEdgeColors = 0, IndexOfFaceColors = -1;
-            float X_Min = float.MaxValue, X_Max = float.MinValue, Y_Min = float.MaxValue, Y_Max = float.MinValue;
-
-            Gl.glClearColor(0, 0, 0, 0);
-            Gl.glClear(Gl.GL_COLOR_BUFFER_BIT | Gl.GL_DEPTH_BUFFER_BIT);
-
-            foreach (Zone Z in m.Zones)
-            {
-                foreach (Face F in Z.Faces)
-                {
-                    if (FaceColoringBox.Checked)
-                        Gl.glBegin(Gl.GL_POLYGON);
-                    else
-                        Gl.glBegin(Gl.GL_LINES);
-
-                    IndexOfFaceColors++;
-                    foreach (uint EN in F.Edges)
-                    {
-                        Edge E = Z.Edges[EN];
-
-                        if (EdgeColoringBox.Checked)
-                        {
-                            Color EdgeColor = EdgeColors[IndexOfEdgeColors];
-                            Gl.glColor3d(EdgeColor.R / 255.0, EdgeColor.G / 255.0, EdgeColor.B / 255.0);
-                            IndexOfEdgeColors++;
-                        }
-                        else if (FaceColoringBox.Checked)
-                        {
-                            Color FaceColor = FaceColors[IndexOfFaceColors];
-                            Gl.glColor3d(FaceColor.R / 255.0, FaceColor.G / 255.0, FaceColor.B / 255.0);
-                        }
-                        else
-                            Gl.glColor3d(1, 1, 1);
-
-                        Z.Vertices[E.Start].Position.glTell();
-                        Z.Vertices[E.End].Position.glTell();
-
-                        //Get Minimum X, Minimum Y, Maximum X and Maximum Y.
-                        X_Min = Math.Min((float)Z.Vertices[E.Start].Position.x, X_Min);
-                        X_Max = Math.Max((float)Z.Vertices[E.Start].Position.x, X_Max);
-                        Y_Min = Math.Min((float)Z.Vertices[E.Start].Position.y, Y_Min);
-                        Y_Max = Math.Max((float)Z.Vertices[E.Start].Position.y, Y_Max);
-                        X_Min = Math.Min((float)Z.Vertices[E.End].Position.x, X_Min);
-                        X_Max = Math.Max((float)Z.Vertices[E.End].Position.x, X_Max);
-                        Y_Min = Math.Min((float)Z.Vertices[E.End].Position.y, Y_Min);
-                        Y_Max = Math.Max((float)Z.Vertices[E.End].Position.y, Y_Max);
-
-                    }//end of edges
-                    Gl.glEnd();
-                    Gl.glFlush();
-                }//end of faces
-            }// end of zones
-
-            //Get the midpoint.
-            X = (X_Max + X_Min) / 2;
-            Y = (Y_Max + Y_Min) / 2;
-
-            if (ToggleDisplayValues)
-            {
-                if (EdgeColoringBox.Checked)
-                    DisplayValues(EdgeValues, Color.PeachPuff);
-                else if (FaceColoringBox.Checked)
-                    DisplayValues(FaceValues, Color.White);
-            }
-
-
-
-            int xProblemsMin1st = 0, xProblemsMin2nd = 0;
-                foreach(var c in this.contours)
-                {
-                    foreach(var t in c.edges)
-                    {
-                        //if (t.Item1.x > X_Max || t.Item2.x > X_Max)
-                        //{
-                        //    ++xProblemsMax;
-                        //    //MessageBox.Show("problem here!, x less than minX, or bigger than maxX");
-                        //}
-                        if (t.Item1.x < X_Min) ++xProblemsMin1st;
-                        if (t.Item2.x < X_Min) ++xProblemsMin2nd;
-                    }
-                }
-
-                //MessageBox.Show("xProblemsMin1st: " + xProblemsMin1st.ToString() + ", and xProblemsMin2nd: " + xProblemsMin2nd.ToString());
-
-            if (toggleDisplayContours)
-            {
-                foreach (var c in contours)
-                {
-                    c.Draw();
-                }
-            }
-        }
-
-        private bool CheckData()
-        {
-            if (DataComboBox.Text == "")
-            {
-                EdgeColoringBox.Checked = false;
-                FaceColoringBox.Checked = false;
-                MessageBox.Show("Please select data first.");
-                return false;
-            }
-            return true;
-        }
-
+        #endregion
+        
+        #region Mesh event handlers
         private void EdgeColoringBox_CheckedChanged(object sender, EventArgs e)
         {
             if (EdgeColoringBox.Checked == false || CheckData() == false)
@@ -377,26 +344,48 @@ namespace Mesh_Loader_Task
             SimpleOpenGlControl.Refresh();
 
         }
+        private void LoadFileButton_Click(object sender, EventArgs e)
+        {
+            OpenFileDialog FD = new OpenFileDialog();  //Display a dialog box that allow the user to open a file.
+
+            if (FD.ShowDialog() == DialogResult.OK)
+            {
+                try
+                {
+                    Reset();
+
+                    //FilePathText.Text = FD.FileName;
+                    m = new Mesh(FD.FileName, 1);
+
+                    if (m != null)
+                    {
+                        //Load Data in Combobox;
+                        foreach (string Name in m.VarToIndex.Keys)
+                            DataComboBox.Items.Add(Name);
+
+                        MessageBox.Show("File Loaded Successfully.\n\nMesh Title: " + m.Title);
+                        Gl.glLoadMatrixd(m.Transformation.Data); //Load in center.
+
+                        double Min, Max;
+                        m.GetMinMaxValues(0, out  Min, out Max);
+                        VisualizationOperations.CalculateColorsValues(m, 0, Min, Max, EdgeValues, EdgeColors, FaceValues, FaceColors);
+
+
+                        SimpleOpenGlControl.Invalidate();  //Update and redraw.
+                    }
+                }
+                catch (Exception E)
+                {
+                    MessageBox.Show("Failed to Load File.\n" + E.Message);
+                    return;
+                }
+            }
+        }
 
         private void FaceColoringBox_CheckedChanged(object sender, EventArgs e)
         {
             if (FaceColoringBox.Checked == false || CheckData() == false)
                 return;
-            //SimpleOpenGlControl.Invalidate();
-            SimpleOpenGlControl.Refresh();
-
-        }
-
-        private void DataComboBox_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            string Data = DataComboBox.SelectedItem.ToString();
-            dataIndex = (uint)m.VarToIndex[Data];
-            m.GetMinMaxValues(dataIndex, out  MinData, out MaxData);
-            
-            MaxValueLabel.Text = MaxData.ToString();
-            MinValueLabel.Text = MinData.ToString();
-
-            VisualizationOperations.CalculateColorsValues(m, dataIndex, MinData, MaxData, EdgeValues, EdgeColors, FaceValues, FaceColors);
             //SimpleOpenGlControl.Invalidate();
             SimpleOpenGlControl.Refresh();
 
@@ -410,20 +399,32 @@ namespace Mesh_Loader_Task
 
         }
 
-        private void DisplayValues(List<ValueAndPosition> values, Color TextColor)
+        private void ClearMeshBtn_Click(object sender, EventArgs e)
         {
-            Gl.glColor3d(TextColor.R / 255.0, TextColor.G / 255.0, TextColor.B / 255.0);
-
-            for (int i = 0; i < values.Count(); ++i)
-            {
-                Gl.glRasterPos2f((float)values[i].point.x, (float)values[i].point.y);
-                foreach (char c in Math.Round(values[i].value, 3).ToString())
-                {
-                    Glut.glutBitmapCharacter(Glut.GLUT_BITMAP_HELVETICA_10, c);
-                }
-            }
+            EdgeColoringBox.Checked = false;
+            FaceColoringBox.Checked = false;
+            //this.SimpleOpenGlControl.Invalidate();
+            SimpleOpenGlControl.Refresh();
         }
 
+        private void DataComboBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            string Data = DataComboBox.SelectedItem.ToString();
+            dataIndex = (uint)m.VarToIndex[Data];
+            m.GetMinMaxValues(dataIndex, out  MinData, out MaxData);
+
+            MaxValueLabel.Text = MaxData.ToString();
+            MinValueLabel.Text = MinData.ToString();
+
+            VisualizationOperations.CalculateColorsValues(m, dataIndex, MinData, MaxData, EdgeValues, EdgeColors, FaceValues, FaceColors);
+            //SimpleOpenGlControl.Invalidate();
+            SimpleOpenGlControl.Refresh();
+
+        }
+
+        #endregion
+
+        #region Contour event handlers
         private void ContoursToggleDisplayBtn_Click(object sender, EventArgs e)
         {
             toggleDisplayContours = !toggleDisplayContours;
@@ -466,14 +467,6 @@ namespace Mesh_Loader_Task
             this.SimpleOpenGlControl.Refresh();
         }
 
-        private void ClearMeshBtn_Click(object sender, EventArgs e)
-        {
-            EdgeColoringBox.Checked = false;
-            FaceColoringBox.Checked = false;
-            //this.SimpleOpenGlControl.Invalidate();
-            SimpleOpenGlControl.Refresh();
-        }
-
         private void ContoursToggleDisplayOverIntervalBtn_Click(object sender, EventArgs e)
         {
             toggleDisplayContours = !toggleDisplayContours;
@@ -489,5 +482,24 @@ namespace Mesh_Loader_Task
             //this.SimpleOpenGlControl.Invalidate();
             SimpleOpenGlControl.Refresh();
         }
+        #endregion
+
+        #region Flooded Contours event handlers
+        private void CalculateFloodedContoursBtn_Click(object sender, EventArgs e)
+        {
+            int floodedContuersNumber = -1;
+        }
+
+        private void ToggleDisplayFloodedContoursBtn_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void ClearFloodedContoursBtn_Click(object sender, EventArgs e)
+        {
+
+        }
+        #endregion
+
     }
 }

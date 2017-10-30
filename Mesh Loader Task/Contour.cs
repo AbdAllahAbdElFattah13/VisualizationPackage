@@ -11,6 +11,7 @@ namespace Mesh_Loader_Task
 {
     public class Contour
     {
+        //List <Line> -> consider it as list of pair<StartPoint, EndPoint>
         public List<Tuple<Point3, Point3> > edges;
         public Color color;
         public double value { get; private set; }

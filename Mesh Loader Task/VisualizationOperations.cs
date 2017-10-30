@@ -21,6 +21,15 @@ namespace Mesh_Loader_Task
 
         #region private helpers
 
+        /// <summary>
+        /// detarmin if there's point belongs to the current contour value crossing this edge or not.
+        /// </summary>
+        /// <param name="start">Edge start point</param>
+        /// <param name="end">Edge end point</param>
+        /// <param name="dataIndex">the data which we using to get the contour</param>
+        /// <param name="contourValue">contour value which we are intersted in</param>
+        /// <returns>The point position if there's a point, null otherwise</returns>
+        /// <remarks>always play carefully with the NULLs!!</remarks>
        private static Point3 solveContourProblemForEdge(Vertex start, Vertex end, uint dataIndex, double contourValue)
        {
            Vertex minV = start.Data[dataIndex] < end.Data[dataIndex] ? start : end,
@@ -28,9 +37,12 @@ namespace Mesh_Loader_Task
 
            double minValue = minV.Data[dataIndex],
                    maxValue = maxV.Data[dataIndex];
-
+           
+           //if there's a point belong to the contour and passes throw this edge
            if (minValue <= contourValue && contourValue <= maxValue)
            {
+               //then this point position should defer from the min point by the same amount in which they defer in data "alpha"
+               //calculating alpha from data to use to determain the contour point position
                double alpha = (contourValue - minValue) / (maxValue - minValue);
                double x = minV.Position.x + alpha * (maxV.Position.x - minV.Position.x),
                    y = minV.Position.y + alpha * (maxV.Position.y - minV.Position.y),
@@ -45,6 +57,7 @@ namespace Mesh_Loader_Task
             if (face.Count != 3) throw new Exception("Found more or less than 3 points in a TriangeFace!");
 
             List<Tuple<Point3, Point3>> ret = new List<Tuple<Point3, Point3>>();
+            //just in case if the whole face belong to the contour line
             if (face[0].Data[dataIndex] == face[1].Data[dataIndex] && face[1].Data[dataIndex] == face[2].Data[dataIndex] 
                 && contourValue == face[2].Data[dataIndex])
             {
@@ -86,7 +99,7 @@ namespace Mesh_Loader_Task
         {
             if (face.Count != 4) throw new Exception("Found more or less than 4 points in a QuadFace!");
 
-            #region get the inner point
+            #region get inner point to split the quad face into 4 triangles :D
             double xx = 0, yy = 0, zz = 0;
             Vertex innerPoint = new Vertex(ref xx, ref yy, ref zz, (uint)face[0].Data.Length);
             innerPoint.Data[dataIndex] = 0;
@@ -107,6 +120,8 @@ namespace Mesh_Loader_Task
             List<Tuple<Point3, Point3>> ret = new List<Tuple<Point3, Point3>>();
             for (int i = 0; i < face.Count; ++i)
             {
+                //I read this line after almost a year from me writing it!
+                //well done old me, well done! :D
                 ret.AddRange(solveContourProblemForTriangeFaec(new List<Vertex>() { face[i], face[(i + 1) % face.Count], innerPoint }, dataIndex, contourValue));
             }
             return ret;
@@ -114,7 +129,7 @@ namespace Mesh_Loader_Task
 
         private static Contour CalculateContour(Mesh m, uint dataIndex, double minData, double maxData, double contourValue)
         {
-            //just to make it's a fresh contour, and also to add its color and value
+            //just to make it a fresh contour, and also to add its color and value
             Contour outContour = new Contour(CM.ValueToColor((float)maxData, (float)minData, (float)contourValue), contourValue);
 
             foreach (Zone z in m.Zones)
